@@ -3,7 +3,7 @@ import base64
 from groq import Groq
 
 # 🛡️ REPLACE WITH YOUR ACTUAL GROQ API KEY
-GROQ_API_KEY = "YOUR_GROQ_API_KEY"
+GROQ_API_KEY = "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"
 client = Groq(api_key=GROQ_API_KEY)
 
 def encode_image(image_path):
@@ -12,14 +12,22 @@ def encode_image(image_path):
         return base64.b64encode(image_file.read()).decode('utf-8')
 
 def ask(text, lang="en", image_path=None):
-    # CRITICAL: New instruction to prioritize the user's question over generic description
+    # Map language codes to their full names for the AI instruction
+    lang_map = {
+        "hi": "Hindi",
+        "te": "Telugu",
+        "en": "English"
+    }
+    target_lang = lang_map.get(lang, "English")
+
+    # CRITICAL: Updated instructions to explicitly support Telugu as per project goals
     system_msg = (
         "You are an assistive 'Second Brain' for a blind person. "
         "RULE 1: Always prioritize answering the user's text query directly. "
         "RULE 2: Use the provided image ONLY as context to answer that specific query. "
         "RULE 3: Do NOT start with 'The image shows' or 'I see' unless specifically asked to describe. "
         "RULE 4: If the image is unrelated to the query, answer the query using your general knowledge. "
-        f"Answer concisely in {'Hindi' if lang == 'hi' else 'English'}."
+        f"Answer concisely ONLY in {target_lang}. Do not provide English translations."
     )
 
     try:
@@ -59,4 +67,10 @@ def ask(text, lang="en", image_path=None):
 
     except Exception as e:
         print(f"[GROQ ERROR] {e}")
-        return "I encountered a processing error." if lang == "en" else "प्रसंस्करण में त्रुटि हुई।"
+        # Multi-language error handling
+        error_msgs = {
+            "en": "I encountered a processing error.",
+            "hi": "प्रसंस्करण में त्रुटि हुई।",
+            "te": "ప్రాసెసింగ్‌లో లోపం ఏర్పడింది."
+        }
+        return error_msgs.get(lang, error_msgs["en"])

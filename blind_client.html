@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Second Brain – Voice Client</title>
+  <style>
+    body {
+      margin: 0;
+      background: black;
+      color: white;
+      font-size: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="start">Tap anywhere to start Second Brain</div>
+
+<script>
+const SERVER_URL = "http://10.46.209.13:8000/process"; // your IP
+
+let mediaRecorder;
+let audioChunks = [];
+let stream;
+
+// ---------- LOCAL SPEECH ----------
+function speakLocal(text) {
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "en-US";
+  speechSynthesis.speak(u);
+}
+
+// ---------- START SYSTEM ----------
+async function startSystem() {
+  document.body.innerHTML = ""; // remove text
+
+  speakLocal("Second Brain started. Listening.");
+
+  stream = await navigator.mediaDevices.getUserMedia({
+    audio: true,
+    video: { facingMode: "environment" }
+  });
+
+  startRecording();
+}
+
+// ---------- RECORD ----------
+function startRecording() {
+  audioChunks = [];
+  mediaRecorder = new MediaRecorder(stream);
+
+  mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+  mediaRecorder.onstop = sendToServer;
+
+  mediaRecorder.start();
+
+  setTimeout(() => mediaRecorder.stop(), 5000);
+}
+
+// ---------- CAPTURE IMAGE ----------
+async function captureImage() {
+  const track = stream.getVideoTracks()[0];
+  const capture = new ImageCapture(track);
+  return capture.takePhoto();
+}
+
+// ---------- SEND ----------
+async function sendToServer() {
+  speakLocal("Processing.");
+
+  const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+  const imageBlob = await captureImage();
+
+  const formData = new FormData();
+  formData.append("audio", audioBlob, "audio.webm");
+  formData.append("image", imageBlob, "image.jpg");
+
+  const res = await fetch(SERVER_URL, { method: "POST", body: formData });
+  const audio = await res.blob();
+
+  playResponse(audio);
+}
+
+// ---------- PLAY RESPONSE ----------
+function playResponse(blob) {
+  const url = URL.createObjectURL(blob);
+  const a = new Audio(url);
+
+  a.onended = () => startRecording();
+  a.play();
+}
+
+// ---------- ONE-TIME TAP ----------
+document.body.addEventListener("click", startSystem, { once: true });
+</script>
+</body>
+</html>
