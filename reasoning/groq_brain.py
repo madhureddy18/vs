@@ -12,6 +12,7 @@ if not GROQ_API_KEY:
     raise RuntimeError("GROQ_API_KEY not found. Check your .env file.")
 
 client = Groq(api_key=GROQ_API_KEY)
+print(GROQ_API_KEY)
 
 def encode_image(image_path):
     """Helper to convert image to base64 for Groq Vision."""
