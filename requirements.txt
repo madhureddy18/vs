@@ -3,7 +3,6 @@ uvicorn
 faster-whisper
 edge-tts
 langdetect
-ultralytics
 opencv-python-headless
 numpy
 requests
