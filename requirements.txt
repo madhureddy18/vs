@@ -1,9 +1,11 @@
 fastapi
 uvicorn
-python-multipart
-edge-tts
-groq
-langdetect
 faster-whisper
+edge-tts
+langdetect
+ultralytics
+opencv-python-headless
 numpy
-scipy
+requests
+python-multipart
+groq
