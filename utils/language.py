@@ -1,24 +1,31 @@
-from langdetect import detect
+TELUGU_PHONETIC = [
+    "undi", "ledu", "enti", "idi", "adi", "chudu",
+    "choodandi", "mundu", "akkada", "ikkada"
+]
 
-def detect_language(text: str):
-    try:
-        lang = detect(text)
+HINGLISH_KEYWORDS = [
+    "kya", "samne", "mere", "hai", "ka", "ke", "ki"
+]
 
-        # Force only 3 languages
-        if lang.startswith("hi"):
+
+def normalize_language(text: str, stt_lang: str) -> str:
+    t = text.lower()
+
+    if stt_lang in {"hi", "te"}:
+        return stt_lang
+
+    # Hinglish → Hindi
+    for w in HINGLISH_KEYWORDS:
+        if w in t:
             return "hi"
-        elif lang.startswith("te"):
+
+    # Phonetic Telugu → Telugu
+    for w in TELUGU_PHONETIC:
+        if w in t:
             return "te"
-        else:
-            return "en"
 
-    except:
-        return "en"
+    return "en"
 
 
-def is_valid_speech(text: str):
-    if not text:
-        return False
-    if len(text.strip()) < 2:
-        return False
-    return True
+def is_valid_speech(text: str) -> bool:
+    return bool(text and len(text.strip()) >= 2)

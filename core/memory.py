@@ -1,9 +1,13 @@
 class Memory:
     def __init__(self):
-        self.data = {}
+        self.language = None  # en | hi | te
 
-    def remember(self, key, value):
-        self.data[key] = value
+    def set_language(self, lang: str):
+        if lang in {"en", "hi", "te"}:
+            self.language = lang
 
-    def recall(self, key):
-        return self.data.get(key)
+    def get_language(self):
+        return self.language
+
+    def clear_language(self):
+        self.language = None

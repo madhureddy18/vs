@@ -1,21 +1,27 @@
-def detect_intent(text):
-    text = text.lower()
+def detect_intent(text: str) -> str:
+    t = text.lower()
 
-    vision_keywords = [
-        # English
-        "see", "look", "what is", "describe", "camera", "vision",
-        "objects", "items", "holding", "read", "how many",
-
-        # Hindi
-        "मेरे सामने", "क्या है", "देखो", "आसपास", "कितने",
-
-        # Telugu (NEW)
-        "చూడ", "చూడగలవా", "ఇది ఏమిటి", "వివరించు",
-        "కెమెరా", "చిత్రం", "చూపించు", "ఎన్ని", "నా ముందు"
+    # English vision keywords
+    en_vision = [
+        "see", "look", "in front", "what is in front",
+        "describe", "camera", "image", "picture",
+        "how many", "read"
     ]
 
-    for kw in vision_keywords:
-        if kw in text:
+    # Hinglish (Hindi in English letters)
+    hi_vision = [
+        "mere samne", "samne kya", "samne kya hai",
+        "mere aage", "dikhao", "dekho"
+    ]
+
+    # Telugu (English letters – rough phonetics)
+    te_vision = [
+        "na mundu", "em undi", "chudu", "choodandi",
+        "idi enti", "chupinchu"
+    ]
+
+    for kw in en_vision + hi_vision + te_vision:
+        if kw in t:
             return "VISION"
 
     return "KNOWLEDGE"
