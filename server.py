@@ -1,79 +1,66 @@
 from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import JSONResponse
-import shutil
-import os
+from fastapi.responses import Response, JSONResponse
+import shutil, os, traceback, uuid
 
-from speech_to_text import transcribe
-from intent_engine import detect_intent
-from language import detect_language
-from tts import speak
-
-from ultralytics import YOLO
-from groq_brain import ask_groq   # your LLM function
+from core.intent_engine import detect_intent
+from core.memory import Memory
+from perception.speech_to_text import transcribe
+from reasoning.groq_brain import ask
+from utils.language import detect_language, is_valid_speech
+from output.tts import speak
 
 app = FastAPI()
+memory = Memory()
 
-# Load YOLO model once
-model = YOLO("yolo11n.pt")
+AUDIO_IN = "input.wav"
+IMAGE_IN = "client_image.jpg"
+
+def new_tts_file():
+    return f"tts_{uuid.uuid4().hex}.mp3"
 
 @app.post("/process")
-async def process_request(
-    audio: UploadFile = File(...),
-    image: UploadFile = File(None)
-):
-    # Save audio
-    audio_path = "input.wav"
-    with open(audio_path, "wb") as f:
-        shutil.copyfileobj(audio.file, f)
+async def process(audio: UploadFile = File(...), image: UploadFile = File(None)):
+    tts_file = new_tts_file()
+    try:
+        with open(AUDIO_IN, "wb") as f:
+            shutil.copyfileobj(audio.file, f)
 
-    # Speech to text
-    text = transcribe(audio_path)
+        text = transcribe(AUDIO_IN)
+        if not text or not is_valid_speech(text):
+            await speak("I could not understand.", "en", tts_file)
+            return return_audio(tts_file)
 
-    if not text:
-        return JSONResponse({"error": "No speech detected"})
+        lang = detect_language(text)
+        intent = detect_intent(text)
 
-    # Detect intent
-    intent = detect_intent(text)
+        if intent == "VISION" and image is None:
+            return JSONResponse({"need_image": True})
 
-    # Detect language
-    lang = detect_language(text)
+        image_path = None
+        if image:
+            with open(IMAGE_IN, "wb") as f:
+                shutil.copyfileobj(image.file, f)
+            image_path = IMAGE_IN
 
-    # Process request
-    if intent == "VISION" and image:
-        image_path = "image.jpg"
-        with open(image_path, "wb") as f:
-            shutil.copyfileobj(image.file, f)
+        response = ask(text, lang, image_path=image_path) if intent == "VISION" else ask(text, lang)
+        await speak(response, lang, tts_file)
+        return return_audio(tts_file)
 
-        results = model(image_path, conf=0.6)
-        detections = {}
+    except Exception:
+        print("SERVER ERROR:\n", traceback.format_exc())
+        await speak("A system error occurred.", "en", tts_file)
+        return return_audio(tts_file)
 
-        for r in results:
-            for box in r.boxes:
-                label = model.names[int(box.cls[0])]
-                detections[label] = detections.get(label, 0) + 1
+def return_audio(tts_file: str):
+    if not os.path.exists(tts_file):
+        return JSONResponse(status_code=500, content={"error": "TTS file missing"})
 
-        if detections:
-            reply_text = "I can see "
-            reply_text += ", ".join(
-                [f"{v} {k}" for k, v in detections.items()]
-            )
-        else:
-            reply_text = "I could not detect any objects."
+    with open(tts_file, "rb") as f:
+        data = f.read()
+    
+    try:
+        os.remove(tts_file)
+    except:
+        pass
 
-    else:
-        reply_text = ask_groq(text)
-
-    # Generate speech
-    tts_path = "reply.mp3"
-    await speak(reply_text, lang, tts_path)
-
-    return {
-        "recognized_text": text,
-        "intent": intent,
-        "reply": reply_text
-    }
-
-
-@app.get("/")
-def root():
-    return {"status": "AI Assistant Server Running"}
+    return Response(content=data, media_type="audio/mpeg")
