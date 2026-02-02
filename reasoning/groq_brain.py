@@ -57,7 +57,7 @@ RULES:
             model=model,
             messages=messages,
             temperature=0.1,
-            max_tokens=200
+            max_tokens=400
         )
 
         return res.choices[0].message.content.strip()
