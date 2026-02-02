@@ -4,6 +4,7 @@ import shutil, os, uuid, traceback
 
 from core.memory import Memory
 from core.language_commands import detect_language_command
+from core.intent_engine import detect_intent
 from perception.speech_to_text import transcribe
 from reasoning.groq_brain import ask
 from output.tts import speak
@@ -26,79 +27,139 @@ def new_tts_file():
 
 
 @app.post("/process")
-async def process(audio: UploadFile = File(None)):
-    """
-    Handles three cases:
-    1. Init / onboarding (audio=None, language not set)
-    2. Init ping (audio=None, language already set)
-    3. Normal audio request
-    """
+async def process(
+    audio: UploadFile = File(None),
+    image: UploadFile = File(None)
+):
     tts_file = new_tts_file()
     audio_path = None
+    image_path = None
 
     try:
+        print("=== NEW REQUEST ===")
+        print("AUDIO RECEIVED:", audio is not None)
+        print("IMAGE RECEIVED:", image is not None)
+
         # =====================================================
-        # CASE 1 & 2: NO AUDIO (INIT / ONBOARDING REQUEST)
+        # INIT / ONBOARDING
         # =====================================================
-        if audio is None:
-            # Language NOT set yet → ask preference
+        if audio is None or audio.file is None:
             if memory.get_language() is None:
                 await speak(LANG_PROMPT, "en", tts_file)
                 return return_audio(tts_file)
-
-            # Language already set → silent OK (DO NOTHING)
             return JSONResponse({"status": "ok"})
 
         # =====================================================
-        # CASE 3: NORMAL AUDIO FLOW
+        # SAVE AUDIO
         # =====================================================
         audio_path = f"audio_{uuid.uuid4().hex}.wav"
         with open(audio_path, "wb") as f:
             shutil.copyfileobj(audio.file, f)
 
-        lang_hint = memory.get_language()
-        text, _ = transcribe(audio_path, lang_hint)
+        current_lang = memory.get_language()
+
+        # =====================================================
+        # STT (DUAL PASS)
+        # =====================================================
+        locked_text, multi_text = transcribe(audio_path, current_lang)
 
         try:
             os.remove(audio_path)
         except:
             pass
 
-        print("STT TEXT:", text)
-        print("CURRENT LANGUAGE:", lang_hint)
+        print("LOCKED STT :", locked_text)
+        print("MULTI STT  :", multi_text)
+        print("LANGUAGE   :", current_lang)
 
-        # Invalid / empty speech
-        if not text or not is_valid_speech(text):
-            await speak("I could not understand.", "en", tts_file)
-            return return_audio(tts_file)
-
-        # -----------------------------------------------------
-        # LANGUAGE SET / CHANGE BY VOICE
-        # -----------------------------------------------------
-        new_lang = detect_language_command(text)
+        # =====================================================
+        # LANGUAGE CHANGE (ALWAYS ALLOWED)
+        # =====================================================
+        new_lang = detect_language_command(multi_text)
         if new_lang:
             memory.set_language(new_lang)
             await speak(LANG_CONFIRM[new_lang], new_lang, tts_file)
             return return_audio(tts_file)
 
-        # -----------------------------------------------------
-        # LANGUAGE STILL NOT SET (edge case)
-        # -----------------------------------------------------
+    
+        # =====================================================
+        # DETERMINE VISION MODE (STICKY + MULTILINGUAL)
+        # =====================================================
+        intent = detect_intent(multi_text or locked_text)
+
+        # Vision is sticky across turns
+        if image is not None:
+            is_vision = True
+            memory.set_intent("VISION")
+            print("VISION MODE: IMAGE PRESENT")
+
+        elif intent == "VISION":
+            is_vision = True
+            memory.set_intent("VISION")
+            print("VISION MODE FROM INTENT")
+
+        elif memory.get_intent() == "VISION":
+            is_vision = True
+            print("VISION MODE FROM MEMORY")
+
+        else:
+            is_vision = False
+            memory.set_intent("KNOWLEDGE")
+
+
+        # =====================================================
+        # ASK ANDROID TO CAPTURE IMAGE
+        # =====================================================
+        if is_vision and image is None:
+            print("REQUESTING IMAGE FROM ANDROID")
+            return JSONResponse({"need_image": True})
+
+        # =====================================================
+        # SAVE IMAGE
+        # =====================================================
+        if image:
+            image_path = f"image_{uuid.uuid4().hex}.jpg"
+            with open(image_path, "wb") as f:
+                shutil.copyfileobj(image.file, f)
+            print("IMAGE SAVED:", image_path)
+
+        # =====================================================
+        # LANGUAGE SAFETY
+        # =====================================================
         if memory.get_language() is None:
             await speak(LANG_PROMPT, "en", tts_file)
             return return_audio(tts_file)
 
-        # -----------------------------------------------------
-        # NORMAL QUESTION ANSWERING
-        # -----------------------------------------------------
         lang = memory.get_language()
-        response = ask(text, lang)
+
+        # =====================================================
+        # INVALID SPEECH
+        # =====================================================
+        if not is_valid_speech(locked_text):
+            await speak("I could not understand.", lang, tts_file)
+            return return_audio(tts_file)
+
+        # =====================================================
+        # FINAL RESPONSE
+        # =====================================================
+        if is_vision and image_path:
+            print("CALLING GROQ VISION")
+            response = ask(locked_text, lang, image_path=image_path)
+        else:
+            print("CALLING GROQ TEXT")
+            response = ask(locked_text, lang)
+
         await speak(response, lang, tts_file)
+
+        if image_path:
+            try:
+                os.remove(image_path)
+            except:
+                pass
 
         return return_audio(tts_file)
 
     except Exception:
-        # This should now be RARE
         print("SERVER ERROR:\n", traceback.format_exc())
         await speak("System error occurred.", "en", tts_file)
         return return_audio(tts_file)
@@ -106,7 +167,10 @@ async def process(audio: UploadFile = File(None)):
 
 def return_audio(path: str):
     if not os.path.exists(path):
-        return JSONResponse(status_code=500, content={"error": "TTS file missing"})
+        return JSONResponse(
+            status_code=500,
+            content={"error": "TTS file missing"}
+        )
 
     with open(path, "rb") as f:
         data = f.read()
