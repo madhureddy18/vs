@@ -10,6 +10,9 @@ from reasoning.groq_brain import ask
 from output.tts import speak
 from utils.language import is_valid_speech
 
+# --------------------------------------------------
+# APP INIT
+# --------------------------------------------------
 app = FastAPI()
 memory = Memory()
 
@@ -21,10 +24,38 @@ LANG_CONFIRM = {
     "te": "భాష తెలుగులో సెట్ చేయబడింది."
 }
 
+TMP_DIR = "/tmp"
+
+# Ensure temp directory exists (Windows + Linux safe)
+os.makedirs(TMP_DIR, exist_ok=True)
+
+
+# --------------------------------------------------
+# UTILITIES
+# --------------------------------------------------
 def new_tts_file():
-    return f"tts_{uuid.uuid4().hex}.mp3"
+    return f"{TMP_DIR}/tts_{uuid.uuid4().hex}.mp3"
 
 
+def safe_remove(path: str):
+    try:
+        if path and os.path.exists(path):
+            os.remove(path)
+    except:
+        pass
+
+
+# --------------------------------------------------
+# HEALTH CHECK
+# --------------------------------------------------
+@app.get("/")
+def health():
+    return {"status": "SECOND_BRAIN running"}
+
+
+# --------------------------------------------------
+# MAIN ENDPOINT
+# --------------------------------------------------
 @app.post("/process")
 async def process(
     audio: UploadFile = File(None),
@@ -49,9 +80,9 @@ async def process(
             return JSONResponse({"status": "ok"})
 
         # --------------------------------------------------
-        # SAVE AUDIO
+        # SAVE AUDIO (Cloud Run safe)
         # --------------------------------------------------
-        audio_path = f"audio_{uuid.uuid4().hex}.wav"
+        audio_path = f"{TMP_DIR}/audio_{uuid.uuid4().hex}.wav"
         with open(audio_path, "wb") as f:
             shutil.copyfileobj(audio.file, f)
 
@@ -59,10 +90,7 @@ async def process(
 
         locked_text, multi_text = transcribe(audio_path, current_lang)
 
-        try:
-            os.remove(audio_path)
-        except:
-            pass
+        safe_remove(audio_path)
 
         print("LOCKED STT :", locked_text)
         print("MULTI STT  :", multi_text)
@@ -94,23 +122,22 @@ async def process(
             return return_audio(tts_file)
 
         # --------------------------------------------------
-        # VISION INTENT (STRICT)
+        # INTENT DETECTION
         # --------------------------------------------------
         intent = detect_intent(locked_text, multi_text)
         is_vision = intent == "VISION"
 
         print("VISION INTENT:", is_vision)
 
-        # Ask Android to capture image ONLY if vision intent
+        # Ask client to capture image if needed
         if is_vision and image is None:
-            print("REQUESTING IMAGE FROM ANDROID")
             return JSONResponse({"need_image": True})
 
         # --------------------------------------------------
         # SAVE IMAGE (ONLY IF PROVIDED)
         # --------------------------------------------------
         if image:
-            image_path = f"image_{uuid.uuid4().hex}.jpg"
+            image_path = f"{TMP_DIR}/image_{uuid.uuid4().hex}.jpg"
             with open(image_path, "wb") as f:
                 shutil.copyfileobj(image.file, f)
             print("IMAGE SAVED:", image_path)
@@ -119,19 +146,13 @@ async def process(
         # FINAL RESPONSE
         # --------------------------------------------------
         if is_vision and image_path:
-            print("CALLING GROQ VISION")
             response = ask(locked_text, lang, image_path=image_path)
         else:
-            print("CALLING GROQ TEXT")
             response = ask(locked_text, lang)
 
         await speak(response, lang, tts_file)
 
-        if image_path:
-            try:
-                os.remove(image_path)
-            except:
-                pass
+        safe_remove(image_path)
 
         return return_audio(tts_file)
 
@@ -141,6 +162,9 @@ async def process(
         return return_audio(tts_file)
 
 
+# --------------------------------------------------
+# AUDIO RESPONSE
+# --------------------------------------------------
 def return_audio(path: str):
     if not os.path.exists(path):
         return JSONResponse(
@@ -151,9 +175,18 @@ def return_audio(path: str):
     with open(path, "rb") as f:
         data = f.read()
 
-    try:
-        os.remove(path)
-    except:
-        pass
+    safe_remove(path)
 
     return Response(content=data, media_type="audio/mpeg")
+
+
+# --------------------------------------------------
+# ENTRYPOINT (Cloud Run + Local + ngrok)
+# --------------------------------------------------
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "server:app",
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 8080))
+    )

@@ -1,5 +1,6 @@
 from google.cloud import speech
 import os
+import concurrent.futures
 
 LANG_CODE = {
     "en": "en-IN",
@@ -7,12 +8,16 @@ LANG_CODE = {
     "te": "te-IN"
 }
 
+MAX_STT_SECONDS = 15  # hard safety limit
+
+
 def get_client():
-    """
-    Create SpeechClient lazily so credentials
-    are read at runtime, not import time.
-    """
     return speech.SpeechClient()
+
+
+def _recognize(client, config, audio):
+    return client.recognize(config=config, audio=audio)
+
 
 def transcribe(audio_path: str, lang_hint: str | None = None):
     if not os.path.exists(audio_path):
@@ -35,14 +40,19 @@ def transcribe(audio_path: str, lang_hint: str | None = None):
         enable_automatic_punctuation=True
     )
 
-    multi_response = client.recognize(
-        config=multi_config,
-        audio=audio
-    )
+    try:
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(
+                _recognize, client, multi_config, audio
+            )
+            multi_response = future.result(timeout=MAX_STT_SECONDS)
+    except Exception:
+        return "", ""
 
     multi_text = " ".join(
         r.alternatives[0].transcript
         for r in multi_response.results
+        if r.alternatives
     ).strip()
 
     # ============================
@@ -56,17 +66,21 @@ def transcribe(audio_path: str, lang_hint: str | None = None):
             enable_automatic_punctuation=True
         )
 
-        locked_response = client.recognize(
-            config=locked_config,
-            audio=audio
-        )
+        try:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(
+                    _recognize, client, locked_config, audio
+                )
+                locked_response = future.result(timeout=MAX_STT_SECONDS)
+        except Exception:
+            return multi_text, multi_text
 
         locked_text = " ".join(
             r.alternatives[0].transcript
             for r in locked_response.results
+            if r.alternatives
         ).strip()
 
         return locked_text, multi_text
 
-    # fallback
     return multi_text, multi_text

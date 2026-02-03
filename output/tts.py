@@ -1,17 +1,14 @@
-# =========================================================
-# Async-safe TTS for FastAPI (edge-tts)
-# ONE FILE PER REQUEST (NO COLLISION)
-# =========================================================
-
 import edge_tts
 import os
+import asyncio
+
+TMP_DIR = "/tmp"
+os.makedirs(TMP_DIR, exist_ok=True)
+
+TTS_TIMEOUT = 15  # seconds
+
 
 async def speak(text: str, lang: str, output_file: str):
-    """
-    Async TTS function.
-    Each request writes to its OWN mp3 file.
-    """
-
     if not text or not text.strip():
         return
 
@@ -26,4 +23,7 @@ async def speak(text: str, lang: str, output_file: str):
         voice=voice
     )
 
-    await communicate.save(output_file)
+    await asyncio.wait_for(
+        communicate.save(output_file),
+        timeout=TTS_TIMEOUT
+    )
