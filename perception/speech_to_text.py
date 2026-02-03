@@ -23,8 +23,13 @@ def transcribe(audio_path: str, lang_hint: str | None = None):
     if not os.path.exists(audio_path):
         return "", ""
 
+    # Prevent very long noisy audio
+    if os.path.getsize(audio_path) > 1_000_000:  # ~1MB
+        return "", ""
+
     with open(audio_path, "rb") as f:
         audio_bytes = f.read()
+
 
     audio = speech.RecognitionAudio(content=audio_bytes)
     client = get_client()
@@ -54,6 +59,11 @@ def transcribe(audio_path: str, lang_hint: str | None = None):
         for r in multi_response.results
         if r.alternatives
     ).strip()
+
+    # If we already got usable text, don't do second STT pass
+    if multi_text and lang_hint:
+        return multi_text, multi_text
+
 
     # ============================
     # PASS 2: LOCKED LANGUAGE
