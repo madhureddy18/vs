@@ -1,107 +1,43 @@
+import re
+
+def normalize(text: str) -> str:
+    text = text.lower()
+    text = re.sub(r"[^a-zA-Z\u0C00-\u0C7F\u0900-\u097F\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+# High-confidence VISION indicators (ANY hit = VISION)
+VISION_TOKENS = [
+    # English (fuzzy)
+    "front", "ahead", "near", "around", "beside",
+    "road", "path", "walking", "walk", "safe",
+    "object", "thing", "something", "anything",
+    "person", "people", "car", "bike", "bus",
+    "vehicle", "traffic", "moving", "coming",
+    "what is this", "what is there",
+
+    # Hindi (script + phonetic)
+    "samne", "aage", "raste", "road", "kya hai",
+    "mere samne", "aage kya",
+
+    # Telugu (script)
+    "ముందు", "ముందే", "నా ముందు", "రహదారి",
+    "ఏముంది", "చుట్టూ", "సమీపంలో",
+
+    # Telugu (phonetic – VERY IMPORTANT)
+    "mund", "mundu", "munde", "ram mundu",
+    "emu ndi", "emundi"
+]
+
+
 def detect_intent(locked_text: str, multi_text: str) -> str:
-    """
-    Detect intent using BOTH:
-    - locked_text (native language, accurate)
-    - multi_text (phonetic / mixed, fallback)
-    """
+    combined = normalize(f"{locked_text} {multi_text}")
 
-    combined = f"{locked_text} {multi_text}".lower()
-
-    # ---------- ENGLISH ----------
-    en_vision = [
-    # Presence / Direction
-    "in front of me", "ahead of me", "near me", "around me",
-    "beside me", "on the road",
-
-    # Obstacles
-    "obstacle", "block", "something ahead", "anything ahead",
-    "is the path clear", "can i walk", "safe to walk",
-
-    # People / Living
-    "person", "people", "crowd", "someone in front",
-
-    # Vehicles
-    "car", "bike", "bus", "truck", "vehicle", "traffic",
-
-    # Movement / Danger
-    "coming towards me", "moving", "approaching",
-
-    # Object queries
-    "what is this object", "describe this object",
-    "what am i holding", "what is this",
-
-    # Visual attributes
-    "what color", "how many", "how far", "distance",
-
-    # Reading / Signs
-    "read this", "what does this say"
-]
-
-
-    # ---------- HINDI (DEVANAGARI) ----------
-    hi_vision = [
-    # सामने / दिशा
-    "मेरे सामने", "आगे क्या है", "मेरे आगे", "पास में",
-    "आसपास क्या है", "सड़क पर",
-
-    # बाधाएं
-    "रास्ता साफ है", "कोई बाधा", "कुछ सामने है",
-    "चलना सुरक्षित है",
-
-    # लोग
-    "कोई आदमी", "लोग सामने", "भीड़",
-
-    # वाहन
-    "गाड़ी", "कार", "बाइक", "बस", "ट्रक", "वाहन",
-
-    # खतरा / गति
-    "मेरी तरफ आ रहा", "चलती हुई",
-
-    # वस्तु
-    "यह क्या है", "इस वस्तु का विवरण",
-    "मैं क्या पकड़े हुए हूँ",
-
-    # रंग / संख्या
-    "किस रंग का", "कितने", "कितनी दूरी",
-
-    # पढ़ना
-    "पढ़ो", "यह क्या लिखा है"
-]
-
-
-    # ---------- TELUGU (NATIVE SCRIPT) ----------
-    te_vision = [
-    # ముందు / దిశ
-    "నా ముందు", "ముందు ఏముంది", "నా ముందే",
-    "నా చుట్టూ", "సమీపంలో",
-
-    # అడ్డంకులు
-    "అడ్డంకి", "రహదారి సురక్షితమా",
-    "ముందు ఏదైనా ఉందా",
-
-    # వ్యక్తులు
-    "వ్యక్తి", "ముందు ఎవరు", "జనం",
-
-    # వాహనాలు
-    "కారు", "బైక్", "బస్సు", "ట్రక్", "వాహనం",
-
-    # ప్రమాదం / కదలిక
-    "నా వైపు వస్తోంది", "కదులుతోంది",
-
-    # వస్తువు
-    "ఈ వస్తువు ఏమిటి", "ఈ వస్తువును వివరించు",
-    "నేను ఏమి పట్టుకున్నాను",
-
-    # రంగు / సంఖ్య / దూరం
-    "ఏ రంగులో", "ఎన్ని", "ఎంత దూరంలో",
-
-    # చదవడం
-    "చదువు", "ఇది ఏమి వ్రాయబడింది"
-]
-
-
-    for kw in en_vision + hi_vision + te_vision:
-        if kw in combined:
+    # STRONG RULE:
+    # If user is talking about space, direction, surroundings → VISION
+    for token in VISION_TOKENS:
+        if token in combined:
             return "VISION"
 
     return "KNOWLEDGE"

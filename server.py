@@ -125,11 +125,16 @@ async def process(
         # INTENT DETECTION
         # --------------------------------------------------
         intent = detect_intent(locked_text, multi_text)
-        is_vision = intent == "VISION"
+
+        # Once vision is detected, remember it
+        if intent == "VISION":
+            memory.set_intent("VISION")
+
+        is_vision = memory.get_intent() == "VISION"
 
         print("VISION INTENT:", is_vision)
 
-        # Ask client to capture image if needed
+        # Ask client to capture image if needed (only once)
         if is_vision and image is None:
             return JSONResponse({"need_image": True})
 
@@ -145,8 +150,14 @@ async def process(
         # --------------------------------------------------
         # FINAL RESPONSE
         # --------------------------------------------------
+        # --------------------------------------------------
+        # FINAL RESPONSE
+        # --------------------------------------------------
         if is_vision and image_path:
             response = ask(locked_text, lang, image_path=image_path)
+
+            # Vision completed → clear intent
+            memory.set_intent(None)
         else:
             response = ask(locked_text, lang)
 
@@ -155,6 +166,7 @@ async def process(
         safe_remove(image_path)
 
         return return_audio(tts_file)
+
 
     except Exception:
         print("SERVER ERROR:\n", traceback.format_exc())
