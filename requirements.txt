@@ -13,6 +13,7 @@ google-auth-oauthlib
 google-auth-httplib2
 
 # ---- LLM (Groq) ----
+google-generativeai
 groq
 
 # ---- Text to Speech ----
