@@ -11,7 +11,7 @@ from output.tts import speak
 from utils.language import is_valid_speech
 
 # --------------------------------------------------
-# APP INIT
+# APP INIT 
 # --------------------------------------------------
 app = FastAPI()
 memory = Memory()
@@ -132,7 +132,8 @@ async def process(
 
         is_vision = memory.get_intent() == "VISION"
 
-        print("VISION INTENT:", is_vision)
+        print("INTENT:", "VISION" if is_vision else "KNOWLEDGE")
+
 
         # Ask client to capture image if needed (only once)
         if is_vision and image is None:
@@ -160,6 +161,8 @@ async def process(
             memory.set_intent(None)
         else:
             response = ask(locked_text, lang)
+
+        print("LLM RESPONSE:", response)
 
         await speak(response, lang, tts_file)
 
