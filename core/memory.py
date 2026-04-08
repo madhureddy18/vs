@@ -1,3 +1,4 @@
+#core/memory.py
 class Memory:
     def __init__(self):
         self.language = None   # en | hi | te

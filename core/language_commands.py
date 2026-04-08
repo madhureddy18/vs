@@ -1,3 +1,5 @@
+#core/language_commands.py
+
 def detect_language_command(text: str):
     t = text.lower()
 

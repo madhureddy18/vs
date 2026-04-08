@@ -1,2 +1,5 @@
 gcp_key.json
 venv
+.env
+__pycache__
+*.pyc

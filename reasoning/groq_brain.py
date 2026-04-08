@@ -1,11 +1,19 @@
+# reasoning/groq_brain.py
 import os
 import base64
 from groq import Groq
+from dotenv import load_dotenv
 
+# 🔹 Load .env file
+load_dotenv(override=True)
+
+# 🔹 Get API key
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-if not GROQ_API_KEY:
-    raise RuntimeError("GROQ_API_KEY not set")
 
+if not GROQ_API_KEY:
+    raise RuntimeError("❌ GROQ_API_KEY not set in environment")
+
+# 🔹 Initialize client
 client = Groq(api_key=GROQ_API_KEY)
 
 def encode_image(path: str):
